@@ -188,6 +188,23 @@ class Neural_Network():
         Negative log-likelihood
         '''
         return -1./m * np.sum(y * np.log(h) + (1-y) * np.log(1-h))
+
+    def cost_function_se(self, y, h, m):
+        '''
+        Calculates the squared error of the cost function
+
+        Parameters
+        ----------
+        y: Given target values
+        h: Output of feed forward
+        m: Number of examples
+
+        Returns
+        -------
+        Squared error divided by two
+        '''
+
+        return 1./m * np.sum((y - h) ** 2) / 2
         
     def predict(self, X):
         '''
@@ -232,7 +249,7 @@ class Neural_Network():
         for i in range(50000):
             self.feed_forward(X)
             
-            current_cost = self.cost_function(y, self.__a[-1], len(y))
+            current_cost = self.cost_function_se(y, self.__a[-1], len(y))
             self.cost.append(current_cost)
             if abs(self.cost[-1] - self.cost[-2]) < self.__stoping_threshold:
                 print "cost not decreasing", i
