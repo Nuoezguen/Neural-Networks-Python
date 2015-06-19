@@ -1,3 +1,5 @@
+import numpy as np
+
 class Neural_Network():
     
     def __init__(self, layer_sizes, learning_rate=.01):
@@ -45,7 +47,10 @@ class Neural_Network():
         for i, D in enumerate(self.__DELTAS):
             self.__DELTAS[i] += np.dot(self.__a[i].T, self.__deltas[i])
             self.weights[i] -= self.learning_rate * self.__DELTAS[i] / len(y)
-      
+    
+    def cost_function(self, y, h, m):
+        return -1./m * np.sum(y * np.log(h) + (1-y) * np.log(1-h))
+        
     
     def predict(self, X):
         a = np.c_[np.ones(len(X)), X]
@@ -62,14 +67,14 @@ class Neural_Network():
         for i in range(3000):
             self.feed_forward(X)
             
-            current_cost = cost_function(y, self.__a[-1], len(y))
+            current_cost = self.cost_function(y, self.__a[-1], len(y))
             self.cost.append(current_cost)
     
             self.back_prop(y)
 
-    if __name__ == '__main__':
-        X = np.array([[0,0], [0,1], [1,0], [1,1]])
-        y = np.array([0,1,1,0]).T
-        nn = Neural_Network([2,2,1], learning_rate=.1)
-        nn.fit(X, y)
-        nn.predict(X)
+if __name__ == '__main__':
+    X = np.array([[0,0], [0,1], [1,0], [1,1]])
+    y = np.array([[0,1,1,0]]).T
+    nn = Neural_Network([2,2,1], learning_rate=.1)
+    nn.fit(X, y)
+    print nn.predict(X)
