@@ -9,6 +9,8 @@ Add gradients for activation functions
 Add advanced optimization using fmincg
 Give choice for using advanced optimization or SGD
 Should work for any amount of output layers
+Stop training when error not changing
+Handle overflow and log(0) numerical stuff
 
 '''
 
@@ -16,7 +18,7 @@ import numpy as np
 
 class Neural_Network():
     
-    def __init__(self, layer_sizes, learning_rate=.01, random_seed=10):
+    def __init__(self, layer_sizes, random_seed=None, learning_rate=.01):
         '''
         Initialize Neural network
 
@@ -38,7 +40,7 @@ class Neural_Network():
         # List of weights for each layer of the network
         self.weights = []
         # List of the cost of the network at each step
-        self.cost = []
+        self.cost = [1]
         # DELTA is the computed gradient for each layer. It directly changes the weights
         self.__DELTAS = []
         # error of each node
@@ -49,9 +51,11 @@ class Neural_Network():
         self.epsilon = .15
         self.layer_sizes = layer_sizes
         self.learning_rate = learning_rate
+        self.__stoping_threshold = 1e-10
         
         #Can set to repeat results
-        np.random.seed(random_seed)
+        if random_seed is not None:
+            np.random.seed(random_seed)
         
         # initialize weights and set gradients to 0    
         for i, layer_size in enumerate(layer_sizes[:-1]):
@@ -225,18 +229,36 @@ class Neural_Network():
 
         self.__a[0] = np.c_[np.ones(len(X)), X]
     
-        for i in range(3000):
+        for i in range(50000):
             self.feed_forward(X)
             
             current_cost = self.cost_function(y, self.__a[-1], len(y))
             self.cost.append(current_cost)
+            if abs(self.cost[-1] - self.cost[-2]) < self.__stoping_threshold:
+                print "cost not decreasing", i
+                break
     
             self.back_prop(y)
+
+    def score(self, X, y):
+        '''
+        Returns Accuracy of prediction
+
+        Parameters
+        ----------
+        X: 2d array of inputs
+        y: 2d array of outputs
+
+        Returns
+        -------
+        Accuracy (float)
+        '''
+        return np.mean(np.round(self.predict(X)) == y)
 
 if __name__ == '__main__':
     # xor exmaple
     X = np.array([[0,0], [0,1], [1,0], [1,1]])
     y = np.array([[0,1,1,0]]).T
-    nn = Neural_Network([2,2,1], learning_rate=.1)
+    nn = Neural_Network([2,2,1], learning_rate=.02)
     nn.fit(X, y)
     print nn.predict(X)
