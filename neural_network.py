@@ -51,7 +51,7 @@ class Neural_Network():
         self.epsilon = .15
         self.layer_sizes = layer_sizes
         self.learning_rate = learning_rate
-        self.__stoping_threshold = 1e-10
+        self.__stoping_threshold = 1e-13
         
         #Can set to repeat results
         if random_seed is not None:
@@ -170,7 +170,7 @@ class Neural_Network():
             self.__deltas[i-1] = np.multiply(np.dot(self.__deltas[i], self.weights[i].T), self.__sigmoid_gradient(self.__a[i-1]))[:, 1:]
 
         for i, D in enumerate(self.__DELTAS):
-            self.__DELTAS[i] += np.dot(self.__a[i].T, self.__deltas[i])
+            self.__DELTAS[i] = np.dot(self.__a[i].T, self.__deltas[i])
             self.weights[i] -= self.learning_rate * self.__DELTAS[i] / len(y)
     
     def cost_function(self, y, h, m):
@@ -246,7 +246,7 @@ class Neural_Network():
 
         self.__a[0] = np.c_[np.ones(len(X)), X]
     
-        for i in range(50000):
+        for i in range(500000):
             self.feed_forward(X)
             
             current_cost = self.cost_function_se(y, self.__a[-1], len(y))
@@ -276,6 +276,6 @@ if __name__ == '__main__':
     # xor exmaple
     X = np.array([[0,0], [0,1], [1,0], [1,1]])
     y = np.array([[0,1,1,0]]).T
-    nn = Neural_Network([2,2,1], learning_rate=.02)
+    nn = Neural_Network([2,2,1], learning_rate=1)
     nn.fit(X, y)
     print nn.predict(X)
