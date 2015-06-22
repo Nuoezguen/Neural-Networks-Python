@@ -14,11 +14,16 @@ Handle overflow and log(0) numerical stuff
 
 '''
 
+
+import matplotlib
+# matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np
+
 
 class Neural_Network():
     
-    def __init__(self, layer_sizes, random_seed=None, learning_rate=.01):
+    def __init__(self, layer_sizes, random_seed=None, learning_rate=1):
         '''
         Initialize Neural network
 
@@ -246,7 +251,7 @@ class Neural_Network():
 
         self.__a[0] = np.c_[np.ones(len(X)), X]
     
-        for i in range(500000):
+        for i in range(50000):
             self.feed_forward(X)
             
             current_cost = self.cost_function_se(y, self.__a[-1], len(y))
@@ -273,9 +278,25 @@ class Neural_Network():
         return np.mean(np.round(self.predict(X)) == y)
 
 if __name__ == '__main__':
-    # xor exmaple
-    X = np.array([[0,0], [0,1], [1,0], [1,1]])
-    y = np.array([[0,1,1,0]]).T
-    nn = Neural_Network([2,2,1], learning_rate=1)
-    nn.fit(X, y)
-    print nn.predict(X)
+    # # xor exmaple
+    # X = np.array([[0,0], [0,1], [1,0], [1,1]])
+    # y = np.array([[0,1,1,0]]).T
+    # nn = Neural_Network([2,2,1], learning_rate=1)
+    # nn.fit(X, y)
+    # print nn.predict(X)
+
+    X = np.random.rand(300,2)
+    y = np.atleast_2d(1 * np.logical_or((X[:,0] - .8) ** 2 + (X[:,1]-.5) ** 2 < .03, (X[:,0] - .2) ** 2 + (X[:,1]-.8) ** 2 < .03)).T
+
+    nn = Neural_Network([2,10,1], learning_rate=5)
+    nn.fit(X,y)
+
+    xx, yy = np.meshgrid(np.linspace(0,1,100), np.linspace(0,1,100))
+    Z = np.round(nn.predict(np.c_[xx.ravel(), yy.ravel()]))
+    Z = Z.reshape(xx.shape)
+    plt.figure(figsize=(10,8))
+    plt.contourf(xx, yy, Z, alpha=.8)
+    plt.scatter(X[:,0], X[:,1], c=y, s=60)
+    plt.title("Neural Net Accuracy is " + str(np.round(nn.score(X,y),2)))
+    plt.show()
+    
