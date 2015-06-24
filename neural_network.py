@@ -18,10 +18,12 @@ Add regression functionality
 import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
+from __future__ import division
 
 class Neural_Network():
     
-    def __init__(self, layer_sizes, random_seed=None, learning_rate=1, opt=True):
+    def __init__(self, layer_sizes, random_seed=None, learning_rate=1, opt=False, \
+                 epsilon=.15, activation_func='sigmoid', epochs=50000):
         '''
         Initialize Neural network
 
@@ -51,11 +53,24 @@ class Neural_Network():
         # list of activation values for each layer
         self.__a = range(len(layer_sizes))
         # initial values of the weights will be between -epsilon and + epsilon
-        self.epsilon = .15
+        self.epsilon = epsilon
         self.layer_sizes = layer_sizes
         self.learning_rate = learning_rate
         self.__stoping_threshold = 1e-13
         self.opt = opt
+        self.epochs = epochs
+        
+        #get correct activation function and activation function derivative
+        if activation_func == 'sigmoid':
+            self.__activation_func = self.__sigmoid
+            self.__activation_gradient = self.__sigmoid_gradient
+        elif activation_func == 'tanh':
+            self.__activation_func = self.__tanh
+            self.__activation_gradient = self.__tanh_gradient
+        else:
+            raise ValueError(activation_func + " is not recognized as an activation function. " +
+                "Please choose 'sigmoid' or 'tanh'")
+            
         
         #Can set to repeat results
         if random_seed is not None:
@@ -126,9 +141,23 @@ class Neural_Network():
         '''
         return np.multiply(x, 1-x)
     
+    def __tanh_gradient(self, x):
+        '''
+        Finds the derivative of the tanh function
+
+        Parameters
+        ----------
+        x: 2d array
+
+        Returns
+        -------
+        Gradient of x
+        '''
+        return 1.0 - x**2
+    
     def feed_forward(self, X):
         '''
-        Feeds input through one iteration of the neural network to get thee output
+        Feeds input through one iteration of the neural network to get the output
 
         Parameters
         ----------
@@ -142,11 +171,11 @@ class Neural_Network():
         # multiply weights times input, then activate and repeat
         for i, theta in enumerate(self.weights):
             z = np.dot(self.__a[i], theta)
-            self.__a[i+1] = np.c_[np.ones(len(z)), self.__sigmoid(z)]
+            self.__a[i+1] = np.c_[np.ones(len(z)), self.__activation_func(z)]
         # Remove column of ones in last layer  
         self.__a[-1] = self.__a[-1][:,1:]
     
-    def back_prop(self):
+    def back_prop(self, change_weights=True):
         '''
         Backpropagation algorithm. Attempts to find "error" in each layer and use SGD
         to move weights closer to optimum
@@ -170,53 +199,72 @@ class Neural_Network():
         # for better explanation http://neuralnetworksanddeeplearning.com/chap2.html
         
         # Using error function E = (y' - y) ^ 2
-        self.__deltas[-1] = np.multiply(self.__a[-1] - self.__y_encoded_mat, self.__sigmoid_gradient(self.__a[-1]))
+        self.__deltas[-1] = np.multiply(self.__a[-1] - self.__y_encoded_mat, self.__activation_gradient(self.__a[-1]))
 
         for i in range(-1, -len(self.__deltas), -1):
-            self.__deltas[i-1] = np.multiply(np.dot(self.__deltas[i], self.weights[i].T), self.__sigmoid_gradient(self.__a[i-1]))[:, 1:]
+            self.__deltas[i-1] = np.multiply(np.dot(self.__deltas[i], self.weights[i].T), self.__activation_gradient(self.__a[i-1]))[:, 1:]
 
         for i, D in enumerate(self.__DELTAS):
-            self.__DELTAS[i] = np.dot(self.__a[i].T, self.__deltas[i])
-            self.weights[i] -= self.learning_rate * self.__DELTAS[i] / len(self.__y_encoded_mat)
+            self.__DELTAS[i] = np.dot(self.__a[i].T, self.__deltas[i]) / len(self.__y_encoded_mat)
+            if change_weights:
+                self.weights[i] -= self.learning_rate * self.__DELTAS[i] 
+    
+    def __convert_weights_back_to_matrix(self, x):
+        cum_sum = [0]
+        for i, layer in enumerate(self.layer_sizes[:-2]):
+
+            cum_sum.append((layer + 1) * self.layer_sizes[i + 1])
+            self.weights[i] = x[cum_sum[-2]:cum_sum[-1]].reshape(layer+1, self.layer_sizes[i + 1])
+        
+        self.weights[-1] = x[cum_sum[-1]:].reshape(self.layer_sizes[i + 1] + 1, self.layer_sizes[i + 2])
+    
     
     def cost_func_opt(self, x, *args):
-        cum_sum = [0]
-        for i, layer in enumerate(self.layer_sizes[:-2]):
-
-            cum_sum.append((layer + 1) * self.layer_sizes[i + 1])
-            print cum_sum
-            print (self.layer_sizes[i + 1] + 1, layer)
-            self.weights[i] = x[cum_sum[-2]:cum_sum[-1]].reshape(self.layer_sizes[i + 1] + 1, layer)
-        
-        self.weights[-1] = x[cum_sum[-1]:].reshape(self.layer_sizes[i + 1] + 1, self.layer_sizes[i + 2])
- 
+        self.__convert_weights_back_to_matrix(x)
         self.feed_forward(X)
-        
-        return 1./len(y) * np.sum((y - self.__a[-1]) ** 2) / 2
+        return self.cost_function_se()
+    
     
     def gradf(self, x, *args):
-        cum_sum = [0]
-        for i, layer in enumerate(self.layer_sizes[:-2]):
-
-            cum_sum.append((layer + 1) * self.layer_sizes[i + 1])
-            print cum_sum
-            print (self.layer_sizes[i + 1] + 1, layer)
-            self.weights[i] = x[cum_sum[-2]:cum_sum[-1]].reshape(self.layer_sizes[i + 1] + 1, layer)
-        
-        self.weights[-1] = x[cum_sum[-1]:].reshape(self.layer_sizes[i + 1] + 1, self.layer_sizes[i + 2])
- 
-            
+        self.__convert_weights_back_to_matrix(x)
         self.feed_forward(X)
-        self.back_prop(y)
+        self.back_prop(change_weights=False)
         
         ALL_DELTAS = self.__DELTAS[0].ravel()
         for D in self.__DELTAS[1:]:
             ALL_DELTAS = np.r_[ALL_DELTAS, D.ravel()]
-        print ALL_DELTAS
         return ALL_DELTAS
-        
     
-    def cost_function(self, y, h, m):
+
+    def grad_check(self, theta, X):
+        grads = np.zeros(len(theta))
+        epsilon = 1e-4
+        for i, grad in enumerate(grads):            
+            theta_plus = theta.copy()
+            theta_plus[i] += epsilon
+            self.__convert_weights_back_to_matrix(theta_plus)
+            self.feed_forward(X)
+            cost_plus = self.cost_function_se()
+            
+            theta_minus = theta.copy()
+            theta_minus[i] -= epsilon
+            self.__convert_weights_back_to_matrix(theta_minus)
+            self.feed_forward(X)
+            cost_minus = self.cost_function_se()
+            
+            grads[i] = (cost_plus - cost_minus) / (2*epsilon)
+        
+        self.__convert_weights_back_to_matrix(theta)
+        self.feed_forward(X)
+        self.back_prop()
+        ALL_DELTAS = self.__DELTAS[0].ravel()
+        for D in self.__DELTAS[1:]:
+            ALL_DELTAS = np.r_[ALL_DELTAS, D.ravel()]
+        
+        print "manual grad check MSE", np.sum((grads - ALL_DELTAS)**2) / len(grads) 
+       
+    
+    def cost_function_mle(self, y, h, m):
         '''
         MLE cost function
 
@@ -232,7 +280,7 @@ class Neural_Network():
         '''
         return -1./m * np.sum(y * np.log(h) + (1-y) * np.log(1-h))
 
-    def cost_function_se(self, y, h, m):
+    def cost_function_se(self):
         '''
         Calculates the squared error of the cost function
 
@@ -246,7 +294,7 @@ class Neural_Network():
         -------
         Squared error divided by two
         '''
-        return 1./m * np.sum((y - h) ** 2) / 2
+        return 1/len(self.__y_encoded_mat) * np.sum((self.__y_encoded_mat - self.__a[-1]) ** 2) / 2
         
     def predict(self, X):
         '''
@@ -263,7 +311,7 @@ class Neural_Network():
         a = np.c_[np.ones(len(X)), X]
         for i, theta in enumerate(self.weights):
             z = np.dot(a, theta)
-            a = np.c_[np.ones(len(z)), self.__sigmoid(z)]
+            a = np.c_[np.ones(len(z)), self.__activation_func(z)]
         
         if len(self.classes_) > 2:
             soft_max = np.argmax(a[:,1:], axis=1)
@@ -325,13 +373,26 @@ class Neural_Network():
             unraveled_thetas = self.weights[0].ravel()
             for theta in self.weights[1:]:
                 unraveled_thetas = np.r_[unraveled_thetas, theta.ravel()]
-            theta_opt,min_val,c,d, e = optimize.fmin_cg(self.cost_func_opt, fprime=self.gradf, x0 = unraveled_thetas, args = (X, y, m), full_output=1,gtol=1e-10 )
+            print "gradient check", optimize.check_grad(self.cost_func_opt, self.gradf, unraveled_thetas)
+            
+            self.grad_check(unraveled_thetas, X)
+            
+            theta_opt,min_val,c,d, e = optimize.fmin_cg(self.cost_func_opt, fprime=None, x0 = unraveled_thetas,\
+                                                        args = (X, y, m), full_output=1, gtol=1e-5)
+#             theta_opt= optimize.fmin_bfgs(self.cost_func_opt, fprime=self.gradf, x0 = unraveled_thetas,\
+#                                                         args = (X,y),gtol=1e-14,epsilon=1e-10)
+            
+#             theta_opt= optimize.fmin_l_bfgs_b( self.cost_func_opt, approx_grad=True, x0 = unraveled_thetas,\
+#                                                         args = (X, y, m), pgtol=1e-10)[0]
+            
+            self.__convert_weights_back_to_matrix(theta_opt)
+            
 
         else:
-            for i in range(50000):
+            for i in range(self.epochs):
                 self.feed_forward(X)
 
-                current_cost = self.cost_function_se(self.__y_encoded_mat, self.__a[-1], len(self.__y_encoded_mat))
+                current_cost = self.cost_function_se()
         
                 self.cost.append(current_cost)
                 if abs(self.cost[-1] - self.cost[-2]) < self.__stoping_threshold:
@@ -354,7 +415,6 @@ class Neural_Network():
         Accuracy (float)
         '''
         return np.mean(self.predict(X) == y)
-
 
 if __name__ == '__main__':
     # # xor exmaple
