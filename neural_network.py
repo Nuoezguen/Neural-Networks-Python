@@ -6,9 +6,8 @@ Add regularization parameter
 Add ability to choose activation function
 Add more activation functions
 Add gradients for activation functions
-Add advanced optimization using fmincg
-Give choice for using advanced optimization or SGD
-Should work for any amount of output layers
+
+
 Stop training when error not changing
 Handle overflow and log(0) numerical stuff
 Add regression functionality
@@ -23,7 +22,7 @@ from __future__ import division
 class Neural_Network():
     
     def __init__(self, layer_sizes, random_seed=None, learning_rate=1, opt=False, \
-                 epsilon=.15, activation_func='sigmoid', epochs=50000):
+                 epsilon=.15, activation_func='sigmoid', epochs=50000, check_gradients=False):
         '''
         Initialize Neural network
 
@@ -59,6 +58,7 @@ class Neural_Network():
         self.__stoping_threshold = 1e-13
         self.opt = opt
         self.epochs = epochs
+        self.check_gradients = check_gradients
         
         #get correct activation function and activation function derivative
         if activation_func == 'sigmoid':
@@ -210,22 +210,43 @@ class Neural_Network():
                 self.weights[i] -= self.learning_rate * self.__DELTAS[i] 
     
     def __convert_weights_back_to_matrix(self, x):
+        '''
+        Rolls weights back up into matrices
+        
+        Parameters
+        ----------
+        x: unrolled parameters
+        '''
         cum_sum = [0]
         for i, layer in enumerate(self.layer_sizes[:-2]):
 
-            cum_sum.append((layer + 1) * self.layer_sizes[i + 1])
+            cum_sum.append((layer + 1) * self.layer_sizes[i + 1] + cum_sum[-1])
             self.weights[i] = x[cum_sum[-2]:cum_sum[-1]].reshape(layer+1, self.layer_sizes[i + 1])
         
         self.weights[-1] = x[cum_sum[-1]:].reshape(self.layer_sizes[i + 1] + 1, self.layer_sizes[i + 2])
     
     
-    def cost_func_opt(self, x, *args):
+    def __cost_func_opt(self, x, *args):
+        '''
+        Cost function used for advanced optimization
+        
+        Parameters
+        ----------
+        x: unrolled parameters
+        '''
         self.__convert_weights_back_to_matrix(x)
         self.feed_forward(X)
         return self.cost_function_se()
     
     
-    def gradf(self, x, *args):
+    def __gradf(self, x, *args):
+        '''
+        Gradient function used for advanced optimization
+        
+        Parameters
+        ----------
+        x: unrolled parameters
+        '''
         self.__convert_weights_back_to_matrix(x)
         self.feed_forward(X)
         self.back_prop(change_weights=False)
@@ -236,7 +257,18 @@ class Neural_Network():
         return ALL_DELTAS
     
 
-    def grad_check(self, theta, X):
+    def __grad_check(self, theta, X):
+        '''
+        Manually checks the gradient. Prints out the MSE of the gradient found with respect to 
+        back propogation and differencing the cost function over a small value of epsilon.
+        This should yield a value very small less than 1e-10
+        
+        Parameters:
+        -----------
+        theta: unrolled parameters of nn
+        
+        X: Input data
+        '''
         grads = np.zeros(len(theta))
         epsilon = 1e-4
         for i, grad in enumerate(grads):            
@@ -324,7 +356,20 @@ class Neural_Network():
     
     def __encode_y_values(self, y):
         '''
-        Encodes numeric and string values 
+        Encodes numeric and string values into a matrix of 0's and 1's
+        
+        Parameters
+        ----------
+        y: A 1 dimensional array or 2 dimensional array with 1 column of target values
+        
+        Returns:
+        -------
+        None
+        
+        Notes
+        -----
+        Creates a mapping of the unique inputs into a 2 dimensional matrix where each row
+        represents a y-value. Each row will consist of zeros except for a 1 for the appropriate y value
         '''
         if np.ndim(y) == 2 and y.shape[1] != 1:
             raise ValueError("bad y shape {0}. Make y 1 dimension or have 1 as its second dimension".format(y.shape))
@@ -373,16 +418,19 @@ class Neural_Network():
             unraveled_thetas = self.weights[0].ravel()
             for theta in self.weights[1:]:
                 unraveled_thetas = np.r_[unraveled_thetas, theta.ravel()]
-            print "gradient check", optimize.check_grad(self.cost_func_opt, self.gradf, unraveled_thetas)
+                
+            if self.check_gradients:
+                
+                print "gradient check with scipy", optimize.check_grad(self.cost_func_opt, self.gradf, unraveled_thetas)
+                self.__grad_check(unraveled_thetas, X)
             
-            self.grad_check(unraveled_thetas, X)
-            
-            theta_opt,min_val,c,d, e = optimize.fmin_cg(self.cost_func_opt, fprime=None, x0 = unraveled_thetas,\
+            theta_opt,min_val,c,d, e = optimize.fmin_cg(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
                                                         args = (X, y, m), full_output=1, gtol=1e-5)
-#             theta_opt= optimize.fmin_bfgs(self.cost_func_opt, fprime=self.gradf, x0 = unraveled_thetas,\
-#                                                         args = (X,y),gtol=1e-14,epsilon=1e-10)
             
-#             theta_opt= optimize.fmin_l_bfgs_b( self.cost_func_opt, approx_grad=True, x0 = unraveled_thetas,\
+#             theta_opt= optimize.fmin_bfgs(self.cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
+#                                                         args = (X,y))
+            
+#             theta_opt= optimize.fmin_l_bfgs_b( self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
 #                                                         args = (X, y, m), pgtol=1e-10)[0]
             
             self.__convert_weights_back_to_matrix(theta_opt)
