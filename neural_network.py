@@ -14,15 +14,15 @@ Add regression functionality
 
 '''
 
+from __future__ import division
 import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
-from __future__ import division
 
 class Neural_Network():
     
     def __init__(self, layer_sizes, random_seed=None, learning_rate=1, opt=False, \
-                 epsilon=.15, activation_func='sigmoid', epochs=50000, check_gradients=False):
+                 epsilon=.15, activation_func='sigmoid', epochs=200000, check_gradients=False):
         '''
         Initialize Neural network
 
@@ -44,7 +44,7 @@ class Neural_Network():
         # List of weights for each layer of the network
         self.weights = []
         # List of the cost of the network at each step
-        self.cost = [1]
+        self.cost = [0]
         # DELTA is the computed gradient for each layer. It directly changes the weights
         self.__DELTAS = []
         # error of each node
@@ -155,7 +155,7 @@ class Neural_Network():
         '''
         return 1.0 - x**2
     
-    def feed_forward(self, X):
+    def __feed_forward(self, X):
         '''
         Feeds input through one iteration of the neural network to get the output
 
@@ -175,7 +175,7 @@ class Neural_Network():
         # Remove column of ones in last layer  
         self.__a[-1] = self.__a[-1][:,1:]
     
-    def back_prop(self, change_weights=True):
+    def __back_prop(self, change_weights=True):
         '''
         Backpropagation algorithm. Attempts to find "error" in each layer and use SGD
         to move weights closer to optimum
@@ -235,8 +235,8 @@ class Neural_Network():
         x: unrolled parameters
         '''
         self.__convert_weights_back_to_matrix(x)
-        self.feed_forward(X)
-        return self.cost_function_se()
+        self.__feed_forward(X)
+        return self.__cost_function_se()
     
     
     def __gradf(self, x, *args):
@@ -248,8 +248,8 @@ class Neural_Network():
         x: unrolled parameters
         '''
         self.__convert_weights_back_to_matrix(x)
-        self.feed_forward(X)
-        self.back_prop(change_weights=False)
+        self.__feed_forward(X)
+        self.__back_prop(change_weights=False)
         
         ALL_DELTAS = self.__DELTAS[0].ravel()
         for D in self.__DELTAS[1:]:
@@ -275,20 +275,20 @@ class Neural_Network():
             theta_plus = theta.copy()
             theta_plus[i] += epsilon
             self.__convert_weights_back_to_matrix(theta_plus)
-            self.feed_forward(X)
-            cost_plus = self.cost_function_se()
+            self.__feed_forward(X)
+            cost_plus = self.__cost_function_se()
             
             theta_minus = theta.copy()
             theta_minus[i] -= epsilon
             self.__convert_weights_back_to_matrix(theta_minus)
-            self.feed_forward(X)
-            cost_minus = self.cost_function_se()
+            self.__feed_forward(X)
+            cost_minus = self.__cost_function_se()
             
             grads[i] = (cost_plus - cost_minus) / (2*epsilon)
         
         self.__convert_weights_back_to_matrix(theta)
-        self.feed_forward(X)
-        self.back_prop()
+        self.__feed_forward(X)
+        self.__back_prop()
         ALL_DELTAS = self.__DELTAS[0].ravel()
         for D in self.__DELTAS[1:]:
             ALL_DELTAS = np.r_[ALL_DELTAS, D.ravel()]
@@ -296,7 +296,7 @@ class Neural_Network():
         print "manual grad check MSE", np.sum((grads - ALL_DELTAS)**2) / len(grads) 
        
     
-    def cost_function_mle(self, y, h, m):
+    def __cost_function_mle(self, y, h, m):
         '''
         MLE cost function
 
@@ -312,7 +312,7 @@ class Neural_Network():
         '''
         return -1./m * np.sum(y * np.log(h) + (1-y) * np.log(1-h))
 
-    def cost_function_se(self):
+    def __cost_function_se(self):
         '''
         Calculates the squared error of the cost function
 
@@ -421,14 +421,14 @@ class Neural_Network():
                 
             if self.check_gradients:
                 
-                print "gradient check with scipy", optimize.check_grad(self.cost_func_opt, self.gradf, unraveled_thetas)
+                print "gradient check with scipy", optimize.check_grad(self.__cost_func_opt, self.__gradf, unraveled_thetas)
                 self.__grad_check(unraveled_thetas, X)
             
             theta_opt,min_val,c,d, e = optimize.fmin_cg(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
                                                         args = (X, y, m), full_output=1, gtol=1e-5)
             
-#             theta_opt= optimize.fmin_bfgs(self.cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
-#                                                         args = (X,y))
+#             theta_opt= optimize.fmin_bfgs(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
+#                                                         args = (X,y), gtol=1e-13)
             
 #             theta_opt= optimize.fmin_l_bfgs_b( self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
 #                                                         args = (X, y, m), pgtol=1e-10)[0]
@@ -438,16 +438,16 @@ class Neural_Network():
 
         else:
             for i in range(self.epochs):
-                self.feed_forward(X)
+                self.__feed_forward(X)
 
-                current_cost = self.cost_function_se()
+                current_cost = self.__cost_function_se()
         
                 self.cost.append(current_cost)
-                if abs(self.cost[-1] - self.cost[-2]) < self.__stoping_threshold:
-                    print "cost not decreasing", i
-                    break
+#                 if abs(self.cost[-1] - self.cost[-2]) < self.__stoping_threshold:
+#                     print "cost not decreasing", i
+#                     break
 
-                self.back_prop()
+                self.__back_prop()
 
     def score(self, X, y):
         '''
