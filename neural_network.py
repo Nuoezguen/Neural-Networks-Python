@@ -232,6 +232,7 @@ class Neural_Network():
         ----------
         x: unrolled parameters
         '''
+        X,y = args
         self.__convert_weights_back_to_matrix(x)
         self.__feed_forward(X)
         return self.__cost_function_se()
@@ -245,6 +246,7 @@ class Neural_Network():
         ----------
         x: unrolled parameters
         '''
+        X,y = args
         self.__convert_weights_back_to_matrix(x)
         self.__feed_forward(X)
         self.__back_prop(change_weights=False)
@@ -424,11 +426,12 @@ class Neural_Network():
                 
             if self.check_gradients:
                 
-                print "gradient check with scipy", optimize.check_grad(self.__cost_func_opt, self.__gradf, unraveled_thetas)
+                print "gradient check with scipy", optimize.check_grad(self.__cost_func_opt, self.__gradf, unraveled_thetas, \
+                                                            X, y)
                 self.__grad_check(unraveled_thetas, X)
             
             theta_opt,min_val,c,d, e = optimize.fmin_cg(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
-                                                        args = (X, y, m), full_output=1, gtol=1e-5)
+                                                        args = (X, y), full_output=1, gtol=1e-5)
             
 #             theta_opt= optimize.fmin_bfgs(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
 #                                                         args = (X,y), gtol=1e-13)
@@ -478,7 +481,7 @@ if __name__ == '__main__':
     X = np.random.rand(300,2)
     y = np.atleast_2d(1 * np.logical_or((X[:,0] - .8) ** 2 + (X[:,1]-.5) ** 2 < .03, (X[:,0] - .2) ** 2 + (X[:,1]-.8) ** 2 < .03)).T
 
-    nn = Neural_Network([2,10,1], learning_rate=1, opt=False, C=0)
+    nn = Neural_Network([2,10,1], learning_rate=1, opt=True, C=0, check_gradients=True)
     nn.fit(X,y)
 
     xx, yy = np.meshgrid(np.linspace(0,1,100), np.linspace(0,1,100))
