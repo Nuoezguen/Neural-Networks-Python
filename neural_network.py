@@ -2,18 +2,13 @@
 Package for creating simple neural networks
 
 TODO:
-Add regularization parameter
-Add ability to choose activation function
+
 Add more activation functions
-Add gradients for activation functions
-
-
 Stop training when error not changing
 Handle overflow and log(0) numerical stuff
 Add regression functionality
 
 '''
-
 from __future__ import division
 import numpy as np
 from scipy import optimize
@@ -22,7 +17,7 @@ import matplotlib.pyplot as plt
 class Neural_Network():
     
     def __init__(self, layer_sizes, random_seed=None, learning_rate=1, opt=False, \
-                 epsilon=.15, activation_func='sigmoid', epochs=200000, check_gradients=False):
+                 epsilon=.15, activation_func='sigmoid', epochs=200000, check_gradients=False, C=1):
         '''
         Initialize Neural network
 
@@ -59,6 +54,7 @@ class Neural_Network():
         self.opt = opt
         self.epochs = epochs
         self.check_gradients = check_gradients
+        self.C = C
         
         #get correct activation function and activation function derivative
         if activation_func == 'sigmoid':
@@ -205,7 +201,9 @@ class Neural_Network():
             self.__deltas[i-1] = np.multiply(np.dot(self.__deltas[i], self.weights[i].T), self.__activation_gradient(self.__a[i-1]))[:, 1:]
 
         for i, D in enumerate(self.__DELTAS):
-            self.__DELTAS[i] = np.dot(self.__a[i].T, self.__deltas[i]) / len(self.__y_encoded_mat)
+            regularized_weights = self.weights[i] * self.C
+            regularized_weights[:,0] = 0
+            self.__DELTAS[i] = (np.dot(self.__a[i].T, self.__deltas[i])  + regularized_weights) / len(self.__y_encoded_mat)
             if change_weights:
                 self.weights[i] -= self.learning_rate * self.__DELTAS[i] 
     
@@ -326,7 +324,12 @@ class Neural_Network():
         -------
         Squared error divided by two
         '''
-        return 1/len(self.__y_encoded_mat) * np.sum((self.__y_encoded_mat - self.__a[-1]) ** 2) / 2
+        regularized_sum = 0
+        for weight in self.weights:
+            regularized_sum += np.sum(weight[:,1:]**2)
+        regularized_sum = regularized_sum * self.C / (2*len(self.__y_encoded_mat))
+        
+        return 1/len(self.__y_encoded_mat) * np.sum((self.__y_encoded_mat - self.__a[-1]) ** 2) / 2 + regularized_sum
         
     def predict(self, X):
         '''
@@ -475,7 +478,7 @@ if __name__ == '__main__':
     X = np.random.rand(300,2)
     y = np.atleast_2d(1 * np.logical_or((X[:,0] - .8) ** 2 + (X[:,1]-.5) ** 2 < .03, (X[:,0] - .2) ** 2 + (X[:,1]-.8) ** 2 < .03)).T
 
-    nn = Neural_Network([2,10,1], learning_rate=1, opt=False)
+    nn = Neural_Network([2,10,1], learning_rate=1, opt=False, C=0)
     nn.fit(X,y)
 
     xx, yy = np.meshgrid(np.linspace(0,1,100), np.linspace(0,1,100))
