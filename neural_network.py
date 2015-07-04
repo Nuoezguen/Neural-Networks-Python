@@ -13,11 +13,13 @@ from __future__ import division
 import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
+from warnings import warn
 
 class Neural_Network():
     
     def __init__(self, layer_sizes, random_seed=None, learning_rate=1, opt=False, \
-                 epsilon=.15, activation_func='sigmoid', epochs=200000, check_gradients=False, C=1):
+                 epsilon=.15, activation_func='sigmoid', epochs=200000, \
+                 check_gradients=False, C=1, batch_size=100):
         '''
         Initialize Neural network
 
@@ -55,6 +57,9 @@ class Neural_Network():
         self.epochs = epochs
         self.check_gradients = check_gradients
         self.C = C
+        self.batch_size = batch_size
+        self.__best_weights = None
+        self.__lowest_cost = None
         
         #get correct activation function and activation function derivative
         if activation_func == 'sigmoid':
@@ -151,7 +156,7 @@ class Neural_Network():
         '''
         return 1.0 - x**2
     
-    def __feed_forward(self, X):
+    def __feed_forward(self):
         '''
         Feeds input through one iteration of the neural network to get the output
 
@@ -163,13 +168,14 @@ class Neural_Network():
         --------
         Output of NN
         '''
-
+        
         # multiply weights times input, then activate and repeat
         for i, theta in enumerate(self.weights):
             z = np.dot(self.__a[i], theta)
             self.__a[i+1] = np.c_[np.ones(len(z)), self.__activation_func(z)]
         # Remove column of ones in last layer  
         self.__a[-1] = self.__a[-1][:,1:]
+    
     
     def __back_prop(self, change_weights=True):
         '''
@@ -195,7 +201,7 @@ class Neural_Network():
         # for better explanation http://neuralnetworksanddeeplearning.com/chap2.html
         
         # Using error function E = (y' - y) ^ 2
-        self.__deltas[-1] = np.multiply(self.__a[-1] - self.__y_encoded_mat, self.__activation_gradient(self.__a[-1]))
+        self.__deltas[-1] = np.multiply(self.__a[-1] - self.__y_encoded_mat[self.__random_mini_batch], self.__activation_gradient(self.__a[-1]))
 
         for i in range(-1, -len(self.__deltas), -1):
             self.__deltas[i-1] = np.multiply(np.dot(self.__deltas[i], self.weights[i].T), self.__activation_gradient(self.__a[i-1]))[:, 1:]
@@ -203,9 +209,10 @@ class Neural_Network():
         for i, D in enumerate(self.__DELTAS):
             regularized_weights = self.weights[i] * self.C
             regularized_weights[:,0] = 0
-            self.__DELTAS[i] = (np.dot(self.__a[i].T, self.__deltas[i])  + regularized_weights) / len(self.__y_encoded_mat)
+            self.__DELTAS[i] = (np.dot(self.__a[i].T, self.__deltas[i])  + regularized_weights) / len(self.__random_mini_batch) # len(self.__y_encoded_mat)
             if change_weights:
                 self.weights[i] -= self.learning_rate * self.__DELTAS[i] 
+    
     
     def __convert_weights_back_to_matrix(self, x):
         '''
@@ -226,7 +233,7 @@ class Neural_Network():
     
     def __cost_func_opt(self, x, *args):
         '''
-        Cost function used for advanced optimization
+        Cost function used for advanced optimization. 
         
         Parameters
         ----------
@@ -234,7 +241,9 @@ class Neural_Network():
         '''
         X,y = args
         self.__convert_weights_back_to_matrix(x)
-        self.__feed_forward(X)
+        
+        # __gradf is run first by the optimizer, so the batch size has already been set
+        self.__feed_forward()
         return self.__cost_function_se()
     
     
@@ -248,10 +257,16 @@ class Neural_Network():
         '''
         X,y = args
         self.__convert_weights_back_to_matrix(x)
-        self.__feed_forward(X)
+        self.__set_mini_batch(X)
+        self.__feed_forward()
+        
+        #do not change weights here since we are just calculating the gradient
+        # for the optimizer and need only the gradient (self.__DELTAS)
         self.__back_prop(change_weights=False)
         
         ALL_DELTAS = self.__DELTAS[0].ravel()
+        
+        # unroll gradients
         for D in self.__DELTAS[1:]:
             ALL_DELTAS = np.r_[ALL_DELTAS, D.ravel()]
         return ALL_DELTAS
@@ -275,19 +290,20 @@ class Neural_Network():
             theta_plus = theta.copy()
             theta_plus[i] += epsilon
             self.__convert_weights_back_to_matrix(theta_plus)
-            self.__feed_forward(X)
+            self.__set_mini_batch(X)
+            self.__feed_forward()
             cost_plus = self.__cost_function_se()
             
             theta_minus = theta.copy()
             theta_minus[i] -= epsilon
             self.__convert_weights_back_to_matrix(theta_minus)
-            self.__feed_forward(X)
+            self.__feed_forward()
             cost_minus = self.__cost_function_se()
             
             grads[i] = (cost_plus - cost_minus) / (2*epsilon)
         
         self.__convert_weights_back_to_matrix(theta)
-        self.__feed_forward(X)
+        self.__feed_forward()
         self.__back_prop()
         ALL_DELTAS = self.__DELTAS[0].ravel()
         for D in self.__DELTAS[1:]:
@@ -329,10 +345,13 @@ class Neural_Network():
         regularized_sum = 0
         for weight in self.weights:
             regularized_sum += np.sum(weight[:,1:]**2)
-        regularized_sum = regularized_sum * self.C / (2*len(self.__y_encoded_mat))
+#         regularized_sum = regularized_sum * self.C / (2*len(self.__y_encoded_mat))
+        regularized_sum = regularized_sum * self.C / (2*self.batch_size)
+
         
-        return 1/len(self.__y_encoded_mat) * np.sum((self.__y_encoded_mat - self.__a[-1]) ** 2) / 2 + regularized_sum
-        
+#         return 1/len(self.__y_encoded_mat) * np.sum((self.__y_encoded_mat - self.__a[-1]) ** 2) / 2 + regularized_sum
+        return 1/self.batch_size * np.sum((self.__y_encoded_mat[self.__random_mini_batch] - self.__a[-1]) ** 2) / 2 + regularized_sum
+
     def predict(self, X):
         '''
         Feed forward to predict
@@ -391,6 +410,29 @@ class Neural_Network():
             self.__y_encoded_mat = np.zeros((len(self.__y_encoded), len(self.classes_)))
             for i, y_encoded in enumerate(self.__y_encoded):
                 self.__y_encoded_mat[i, y_encoded] = 1
+                
+                
+    def __set_mini_batch(self, X):
+        '''
+        Randomly chooses data of size batch_size for SGD
+        '''
+        
+        if self.batch_size > len(X):
+            warn("Batch size is greater than number of training examples. " +
+                 "Will use a batch size equal to the number of training examples.")
+            self.batch_size = len(X)
+        
+        self.__random_mini_batch = np.random.choice(range(len(X)), self.batch_size, False)        
+        self.__a[0] = np.c_[np.ones(self.batch_size), X[self.__random_mini_batch]]
+        
+    def __get_cost(self, X, y):
+        current_cost = self.__cost_function_se()
+        self.cost.append(current_cost)
+        if current_cost < self.__lowest_cost or self.__lowest_cost is None:
+            self.__lowest_cost = current_cost
+            self.__best_weights = [weight.copy() for weight in self.weights]
+            self.best_accuracy = self.score(X, y)
+        
         
     def fit(self, X, y):
         '''
@@ -416,8 +458,8 @@ class Neural_Network():
         
             
         self.__encode_y_values(y)
-
         self.__a[0] = np.c_[np.ones(len(X)), X]
+        
         
         if self.opt:
             unraveled_thetas = self.weights[0].ravel()
@@ -431,7 +473,7 @@ class Neural_Network():
                 self.__grad_check(unraveled_thetas, X)
             
             theta_opt,min_val,c,d, e = optimize.fmin_cg(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
-                                                        args = (X, y), full_output=1, gtol=1e-5)
+                                                        args = (X, y), full_output=1, gtol=1e-8)
             
 #             theta_opt= optimize.fmin_bfgs(self.__cost_func_opt, fprime=self.__gradf, x0 = unraveled_thetas,\
 #                                                         args = (X,y), gtol=1e-13)
@@ -444,16 +486,23 @@ class Neural_Network():
 
         else:
             for i in range(self.epochs):
-                self.__feed_forward(X)
-
-                current_cost = self.__cost_function_se()
-        
-                self.cost.append(current_cost)
-#                 if abs(self.cost[-1] - self.cost[-2]) < self.__stoping_threshold:
-#                     print "cost not decreasing", i
-#                     break
-
+                
+                # Get random batch
+                self.__set_mini_batch(X)
+                
+                # Pass data one time through the nn
+                self.__feed_forward()
+                
+                # calculate the cost.
+#                 self.cost.append(self.__cost_function_se())
+                self.__get_cost(X, y)
+                
+                #Backpropogate errors to update weights
                 self.__back_prop()
+            self.end_weights = self.weights[:]
+            self.weights = self.__best_weights
+            print "lowest cost was ", self.__lowest_cost
+                
 
     def score(self, X, y):
         '''
@@ -472,16 +521,16 @@ class Neural_Network():
 
 if __name__ == '__main__':
     # # xor exmaple
-    # X = np.array([[0,0], [0,1], [1,0], [1,1]])
-    # y = np.array([[0,1,1,0]]).T
-    # nn = Neural_Network([2,2,1], learning_rate=1)
-    # nn.fit(X, y)
-    # print nn.predict(X)
-
+#     X = np.array([[0,0], [0,1], [1,0], [1,1]])
+#     y = np.array([[0,1,1,0]]).T
+#     nn = Neural_Network([2,2,1], learning_rate=1, opt=False, check_gradients=True, epochs=100000, batch_size=4)
+#     nn.fit(X, y)
+    
+    # Another example with two random circlular regions as positive class
     X = np.random.rand(300,2)
     y = np.atleast_2d(1 * np.logical_or((X[:,0] - .8) ** 2 + (X[:,1]-.5) ** 2 < .03, (X[:,0] - .2) ** 2 + (X[:,1]-.8) ** 2 < .03)).T
 
-    nn = Neural_Network([2,10,1], learning_rate=1, opt=True, C=0, check_gradients=True)
+    nn = Neural_Network([2,10,1], learning_rate=1, C=0, opt=False, check_gradients=True, batch_size=50, epochs=100000)
     nn.fit(X,y)
 
     xx, yy = np.meshgrid(np.linspace(0,1,100), np.linspace(0,1,100))
@@ -492,4 +541,3 @@ if __name__ == '__main__':
     plt.scatter(X[:,0], X[:,1], c=y, s=60)
     plt.title("Neural Net Accuracy is " + str(np.round(nn.score(X,y),2)))
     plt.show()
-    
